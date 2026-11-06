@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Roleta de Prêmios</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Ubuntu:wght@400;500;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  :root{
+    --laranja:#E87E2C; --laranja-esc:#B85F1A;
+    --preto:#252525; --cinza:#6E6E6E; --cinza-esc:#4a4a4a;
+    --claro:#F2F2F2; --branco:#fff; --erro:#c0392b; --ok:#2e8b57;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    font-family:'Ubuntu',system-ui,sans-serif;color:var(--preto);min-height:100vh;
+    background:radial-gradient(circle at 20% 90%,#e2d3c6 0%,#d6d6d8 40%,#cbcbd0 100%);
+    display:flex;flex-direction:column;align-items:center;padding:24px 16px 40px;
+  }
+  .container{width:100%;max-width:660px;display:flex;flex-direction:column;align-items:center;gap:22px}
+  h1{font-size:clamp(22px,5vw,30px);text-align:center}
+  h1 span{color:var(--laranja)}
+
+  /* ---------- Formulário ---------- */
+  .card{
+    width:100%;background:var(--branco);border:2px solid var(--laranja);border-radius:22px;
+    padding:22px 22px 26px;box-shadow:0 10px 30px rgba(0,0,0,.08)
+  }
+  .card h2{font-size:19px;margin-bottom:14px}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .campo{display:flex;flex-direction:column;gap:5px}
+  .campo.full{grid-column:1/-1}
+  label{font-size:13px;font-weight:700}
+  input[type=text],input[type=tel],input[type=password]{
+    width:100%;padding:12px 14px;border:2px solid #ddd;border-radius:12px;font:inherit;font-size:15px;
+    transition:border-color .2s
+  }
+  input:focus{outline:none;border-color:var(--laranja)}
+  input.invalido{border-color:var(--erro)}
+  .msg-erro{color:var(--erro);font-size:12px;min-height:14px}
+  .consent{display:flex;gap:9px;align-items:flex-start;font-size:13px;margin-top:4px;line-height:1.35}
+  .consent input{margin-top:2px;accent-color:var(--laranja);width:17px;height:17px;flex-shrink:0}
+
+  .btn{
+    border:none;cursor:pointer;font:inherit;font-weight:700;color:#fff;border-radius:999px;
+    padding:15px 28px;font-size:clamp(17px,4vw,21px);transition:transform .1s,filter .2s;
+  }
+  .btn:active{transform:translateY(3px)}
+  .btn-laranja{background:var(--laranja);box-shadow:0 6px 0 var(--laranja-esc)}
+  .btn-cinza{background:var(--cinza);box-shadow:0 6px 0 var(--cinza-esc);cursor:not-allowed}
+  .btn:disabled{filter:grayscale(.2) brightness(.95);cursor:not-allowed}
+  .btn-full{width:100%;margin-top:16px}
+  .btn-girar{width:min(475px,100%)}
+
+  .resumo{display:none;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+  .resumo p{font-size:15px;line-height:1.4}
+  .link-btn{background:none;border:none;color:var(--laranja);font:inherit;font-weight:700;cursor:pointer;text-decoration:underline}
+
+  /* ---------- Roleta ---------- */
+  .roleta-wrap{position:relative;width:min(470px,92vw);aspect-ratio:1}
+  .roleta{width:100%;height:100%;border-radius:50%;filter:drop-shadow(0 18px 28px rgba(0,0,0,.25))}
+  .roleta svg{width:100%;height:100%;display:block}
+  .ponteiro{position:absolute;left:50%;top:-4.5%;width:9%;transform:translateX(-50%);z-index:2;
+    filter:drop-shadow(0 3px 3px rgba(0,0,0,.3))}
+
+  .aviso{font-size:14px;font-weight:700;text-align:center;min-height:18px}
+  .aviso.erro{color:var(--erro)}
+  .aviso.ok{color:var(--ok)}
+
+  footer{margin-top:10px}
+  footer .link-btn{color:var(--cinza);font-size:13px;font-weight:500}
+
+  /* ---------- Modais ---------- */
+  .modal{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;padding:16px;z-index:50}
+  .modal.aberto{display:flex}
+  .modal-box{background:#fff;border-radius:22px;padding:28px 24px;width:100%;max-width:440px;text-align:center;position:relative;
+    animation:pop .35s ease}
+  @keyframes pop{from{transform:scale(.85);opacity:0}to{transform:scale(1);opacity:1}}
+  .modal-box h3{font-size:24px;margin-bottom:8px}
+  .premio-grande{font-size:36px;font-weight:700;color:var(--laranja);margin:10px 0}
+  .fechar{position:absolute;top:10px;right:14px;background:none;border:none;font-size:26px;cursor:pointer;color:var(--cinza)}
+
+  .admin-box{max-width:980px;text-align:left;max-height:92vh;display:flex;flex-direction:column}
+  .admin-topo{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;margin:10px 0 14px}
+  .admin-topo .btn{font-size:15px;padding:10px 18px;box-shadow:0 4px 0 var(--laranja-esc)}
+  .btn-sec{background:var(--preto);box-shadow:0 4px 0 #000 !important}
+  .tabela-wrap{overflow:auto;border:1px solid #eee;border-radius:12px}
+  table{border-collapse:collapse;width:100%;font-size:13px}
+  th,td{padding:9px 10px;border-bottom:1px solid #eee;text-align:left;white-space:nowrap}
+  th{background:var(--preto);color:#fff;position:sticky;top:0}
+  tr:nth-child(even) td{background:#fafafa}
+  .busca{padding:9px 12px;border:2px solid #ddd;border-radius:10px;font:inherit;min-width:200px}
+
+  @media (max-width:520px){ .grid{grid-template-columns:1fr} }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>Gire a <span>roleta</span> e concorra!</h1>
+
+  <!-- Formulário -->
+  <section class="card" id="cardForm">
+    <form id="form" novalidate>
+      <h2>Preencha seus dados para participar</h2>
+      <div class="grid">
+        <div class="campo full">
+          <label for="nome">Nome completo</label>
+          <input type="text" id="nome" autocomplete="name" maxlength="120" placeholder="Seu nome e sobrenome">
+          <span class="msg-erro" data-for="nome"></span>
+        </div>
+        <div class="campo full">
+          <label for="cpf">CPF</label>
+          <input type="tel" id="cpf" inputmode="numeric" maxlength="14" placeholder="000.000.000-00">
+          <span class="msg-erro" data-for="cpf"></span>
+        </div>
+        <label class="consent full">
+          <input type="checkbox" id="consent">
+          <span>Autorizo o uso dos meus dados (nome e CPF) exclusivamente para identificação nesta ação e entrega do prêmio.</span>
+        </label>
+        <span class="msg-erro full" data-for="consent"></span>
+      </div>
+      <button type="submit" class="btn btn-laranja btn-full">Salvar e continuar</button>
+    </form>
+
+    <div class="resumo" id="resumo">
+      <p>Participante: <strong id="resumoNome"></strong><br><small id="resumoInfo"></small></p>
+      <button class="link-btn" id="btnEditar" type="button">Editar dados</button>
+    </div>
+  </section>
+
+  <!-- Roleta -->
+  <div class="roleta-wrap">
+    <svg class="ponteiro" viewBox="0 0 40 52" aria-hidden="true">
+      <path d="M20 51 L6 30 A17 17 0 1 1 34 30 Z" fill="#252525"/>
+      <circle cx="20" cy="18" r="8" fill="#E87E2C"/>
+    </svg>
+    <div class="roleta" id="roleta"></div>
+  </div>
+
+  <button class="btn btn-cinza btn-girar" id="btnGirar" disabled>Preencha seus dados para girar</button>
+  <p class="aviso" id="aviso"></p>
+
+  <footer><button class="link-btn" id="abrirAdmin" type="button">Área restrita</button></footer>
+</div>
+
+<!-- Modal resultado -->
+<div class="modal" id="modalResultado">
+  <div class="modal-box">
+    <h3 id="resTitulo">Parabéns!</h3>
+    <p id="resTexto">Você ganhou:</p>
+    <div class="premio-grande" id="resPremio"></div>
+    <p style="font-size:13px;color:#666">Seu resultado foi registrado.</p>
+    <button class="btn btn-laranja btn-full" id="fecharResultado">OK</button>
+  </div>
+</div>
+
+<!-- Modal admin -->
+<div class="modal" id="modalAdmin">
+  <div class="modal-box" id="adminLoginBox">
+    <button class="fechar" data-fechar="modalAdmin">&times;</button>
+    <h3>Área restrita</h3>
+    <p style="font-size:14px;color:#666;margin-bottom:14px">Acesso apenas para administradores autorizados.</p>
+    <form id="formAdmin" novalidate style="text-align:left;display:flex;flex-direction:column;gap:10px">
+      <div class="campo"><label for="adminCpf">CPF</label>
+        <input type="tel" id="adminCpf" inputmode="numeric" maxlength="14" placeholder="000.000.000-00"></div>
+      <div class="campo"><label for="adminSenha">Senha</label>
+        <input type="password" id="adminSenha" autocomplete="current-password"></div>
+      <span class="msg-erro" id="adminErro"></span>
+      <button class="btn btn-laranja" type="submit">Entrar</button>
+    </form>
+  </div>
+
+  <div class="modal-box admin-box" id="adminPainel" style="display:none">
+    <button class="fechar" data-fechar="modalAdmin">&times;</button>
+    <h3>Participantes</h3>
+    <div class="admin-topo">
+      <span id="adminTotal" style="font-weight:700"></span>
+      <input class="busca" id="adminBusca" placeholder="Buscar nome, CPF, prêmio...">
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn btn-laranja" id="baixarXlsx">Baixar Excel</button>
+        <button class="btn btn-laranja" id="baixarCsv">Baixar CSV</button>
+        <button class="btn btn-sec" id="atualizar">Atualizar</button>
+        <button class="btn btn-sec" id="sair">Sair</button>
+      </div>
+    </div>
+    <div class="tabela-wrap"><table>
+      <thead><tr><th>Data/hora</th><th>Nome</th><th>CPF</th><th>Prêmio</th></tr></thead>
+      <tbody id="adminTabela"></tbody>
+    </table></div>
+  </div>
+</div>
+
+<script type="module">
+/* =====================================================================
+   1) CONFIGURAÇÃO DO PROJETO FIREBASE (roleta-ge)
+   ===================================================================== */
+const firebaseConfig = {
+  apiKey: "AIzaSyC4ln1cUqa21dl42MTkAG4vPotQCrNVdUM",
+  authDomain: "roleta-ge.firebaseapp.com",
+  projectId: "roleta-ge",
+  storageBucket: "roleta-ge.firebasestorage.app",
+  messagingSenderId: "134670666120",
+  appId: "1:134670666120:web:aa711ffb3e28d2f7e7d23d"
+};
+
+/* CPFs que podem baixar os dados (precisam existir também no Firebase Auth e nas regras) */
+const CPFS_ADMIN = ["06673048948","09163422980","04498276906","07499599914"];
+const DOMINIO_ADMIN = "@roleta-admin.com"; // login vira: CPF@roleta-admin.com
+
+/* =====================================================================
+   2) PRÊMIOS — mesma ordem do print, no sentido horário a partir do topo.
+      "peso" controla a chance (peso 2 = o dobro de chance de peso 1).
+   ===================================================================== */
+const C = {laranja:"#E87E2C", preto:"#252525", cinza:"#6E6E6E", claro:"#F2F2F2", branco:"#FFFFFF"};
+const PREMIOS = [
+  {titulo:"10",       sub:"pontos",    nome:"10 pontos",          bg:C.laranja, fg:C.preto,  sfg:C.preto,  peso:1},
+  {titulo:"20",       sub:"pontos",    nome:"20 pontos",          bg:C.claro,   fg:C.preto,  sfg:C.preto,  peso:1},
+  {titulo:"NÃO FOI",  sub:"dessa vez", nome:"Não foi dessa vez",  bg:C.cinza,   fg:C.branco, sfg:C.branco, peso:1, perdeu:true},
+  {titulo:"50",       sub:"pontos",    nome:"50 pontos",          bg:C.laranja, fg:C.preto,  sfg:C.preto,  peso:1},
+  {titulo:"30",       sub:"pontos",    nome:"30 pontos",          bg:C.claro,   fg:C.preto,  sfg:C.preto,  peso:1},
+  {titulo:"100",      sub:"pontos",    nome:"100 pontos",         bg:C.preto,   fg:C.laranja,sfg:C.laranja,peso:1},
+];
+const TEXTO_CENTRO = "GE";
+
+/* ===================================================================== */
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getFirestore, doc, setDoc, getDocs, collection, query, orderBy, serverTimestamp }
+  from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { getAuth, signInWithEmailAndPassword, signOut }
+  from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+
+const $ = id => document.getElementById(id);
+const configurado = !Object.values(firebaseConfig).some(v => v === "COLE_AQUI");
+let db = null, auth = null;
+if (configurado) {
+  const app = initializeApp(firebaseConfig);
+  db = getFirestore(app);
+  auth = getAuth(app);
+}
+
+/* ---------- Desenho da roleta (SVG) ---------- */
+const N = PREMIOS.length, ANG = 360 / N, R = 225;
+function ponto(r, graus){ const a = (graus - 90) * Math.PI/180; return [r*Math.cos(a), r*Math.sin(a)]; }
+function desenharRoleta(){
+  let s = `<svg viewBox="-250 -250 500 500" xmlns="http://www.w3.org/2000/svg">
+    <circle r="244" fill="${C.preto}"/>`;
+  PREMIOS.forEach((p,i) => {
+    const a0 = i*ANG - ANG/2, a1 = i*ANG + ANG/2;
+    const [x0,y0] = ponto(R,a0), [x1,y1] = ponto(R,a1);
+    s += `<path d="M0 0 L${x0} ${y0} A${R} ${R} 0 0 1 ${x1} ${y1} Z" fill="${p.bg}" stroke="#fff" stroke-width="3"/>`;
+    const numero = /^\d+$/.test(p.titulo);
+    const tam = numero ? (p.titulo.length > 2 ? 40 : 42) : (p.titulo.length > 6 ? 19 : 21);
+    s += `<g transform="rotate(${i*ANG})" font-family="Ubuntu, sans-serif" text-anchor="middle">
+      <text y="${numero ? -158 : -168}" font-size="${tam}" font-weight="700" fill="${p.fg}">${p.titulo}</text>
+      <text y="${numero ? -132 : -146}" font-size="15" font-weight="700" fill="${p.sfg}">${p.sub}</text>
+    </g>`;
+  });
+  for (let i=0;i<N;i++){ const [x,y] = ponto(236, i*ANG - ANG/2); s += `<circle cx="${x}" cy="${y}" r="5" fill="#fff"/>`; }
+  s += `<circle r="50" fill="${C.preto}" stroke="${C.claro}" stroke-width="7"/>
+    <text y="7" text-anchor="middle" font-family="Ubuntu, sans-serif" font-weight="700" font-size="22" fill="${C.laranja}">${TEXTO_CENTRO}</text>
+  </svg>`;
+  $("roleta").innerHTML = s;
+}
+desenharRoleta();
+
+/* ---------- Máscaras e validações ---------- */
+const soDigitos = v => v.replace(/\D/g,"");
+function mascaraCpf(v){ v = soDigitos(v).slice(0,11);
+  return v.replace(/(\d{3})(\d)/,"$1.$2").replace(/(\d{3})(\d)/,"$1.$2").replace(/(\d{3})(\d{1,2})$/,"$1-$2"); }
+function cpfValido(c){
+  c = soDigitos(c); if (c.length !== 11 || /^(\d)\1{10}$/.test(c)) return false;
+  for (let t=9;t<11;t++){ let s=0; for (let i=0;i<t;i++) s += +c[i]*(t+1-i);
+    if (((s*10)%11)%10 !== +c[t]) return false; }
+  return true;
+}
+["cpf","adminCpf"].forEach(id => $(id).addEventListener("input", e => e.target.value = mascaraCpf(e.target.value)));
+
+function erro(campo, msg){
+  const span = document.querySelector(`.msg-erro[data-for="${campo}"]`);
+  if (span) span.textContent = msg || "";
+  const inp = $(campo); if (inp && inp.type !== "checkbox") inp.classList.toggle("invalido", !!msg);
+}
+
+/* ---------- Fluxo do participante ---------- */
+let participante = null, girando = false, rotacaoAtual = 0;
+const aviso = (txt, tipo="") => { $("aviso").textContent = txt; $("aviso").className = "aviso " + tipo; };
+
+$("form").addEventListener("submit", e => {
+  e.preventDefault();
+  const nome = $("nome").value.trim().replace(/\s+/g," ");
+  const cpf = soDigitos($("cpf").value);
+  let ok = true;
+  if (nome.split(" ").length < 2 || nome.length < 5){ erro("nome","Informe nome e sobrenome."); ok=false; } else erro("nome");
+  if (!cpfValido(cpf)){ erro("cpf","CPF inválido."); ok=false; } else erro("cpf");
+  if (!$("consent").checked){ erro("consent","É preciso autorizar o uso dos dados."); ok=false; } else erro("consent");
+  if (!ok) return;
+
+  participante = { nome, cpf };
+  $("form").style.display = "none";
+  $("resumo").style.display = "flex";
+  $("resumoNome").textContent = nome;
+  $("resumoInfo").textContent = `CPF ${mascaraCpf(cpf)}`;
+  const b = $("btnGirar");
+  b.disabled = false; b.className = "btn btn-laranja btn-girar"; b.textContent = "GIRAR A ROLETA";
+  aviso("");
+});
+
+$("btnEditar").addEventListener("click", () => {
+  if (girando) return;
+  $("form").style.display = ""; $("resumo").style.display = "none";
+  const b = $("btnGirar"); b.disabled = true; b.className = "btn btn-cinza btn-girar"; b.textContent = "Preencha seus dados para girar";
+});
+
+function sortearIndice(){
+  const total = PREMIOS.reduce((s,p)=>s+p.peso,0);
+  let r = Math.random()*total;
+  for (let i=0;i<N;i++){ r -= PREMIOS[i].peso; if (r < 0) return i; }
+  return N-1;
+}
+
+$("btnGirar").addEventListener("click", async () => {
+  if (!participante || girando) return;
+  if (!configurado){ aviso("Firebase ainda não configurado no index.html.", "erro"); return; }
+  girando = true;
+  const b = $("btnGirar"); b.disabled = true; b.textContent = "Registrando...";
+  $("btnEditar").disabled = true;
+
+  const i = sortearIndice();
+  const p = PREMIOS[i];
+
+  // Grava ANTES de girar: o documento usa o CPF como ID e as regras do
+  // Firestore bloqueiam um segundo registro do mesmo CPF.
+  try {
+    await setDoc(doc(db, "giros", participante.cpf), {
+      nome: participante.nome, cpf: participante.cpf, premio: p.nome, premioIndice: i, criadoEm: serverTimestamp()
+    });
+  } catch (err) {
+    girando = false; $("btnEditar").disabled = false;
+    if (err.code === "permission-denied"){
+      b.textContent = "Já participou"; b.className = "btn btn-cinza btn-girar";
+      aviso("Este CPF já girou a roleta. Cada pessoa pode participar uma única vez.", "erro");
+    } else {
+      b.disabled = false; b.textContent = "GIRAR A ROLETA";
+      aviso("Não foi possível registrar agora. Verifique a internet e tente novamente.", "erro");
+    }
+    console.error(err);
+    return;
+  }
+
+  b.textContent = "Girando...";
+  const jitter = (Math.random()-0.5) * ANG * 0.7;
+  const alvo = ((360 - i*ANG) % 360 + 360) % 360;
+  const base = rotacaoAtual - (rotacaoAtual % 360) + 360*7;
+  rotacaoAtual = base + alvo + jitter;
+  const roda = $("roleta");
+  roda.style.transition = "transform 6s cubic-bezier(.12,.68,.1,1)";
+  roda.style.transform = `rotate(${rotacaoAtual}deg)`;
+
+  setTimeout(() => {
+    $("resTitulo").textContent = p.perdeu ? "Que pena!" : "Parabéns!";
+    $("resTexto").textContent = p.perdeu ? "O resultado foi:" : "Você ganhou:";
+    $("resPremio").textContent = p.nome;
+    $("modalResultado").classList.add("aberto");
+    b.textContent = "Participação registrada"; b.className = "btn btn-cinza btn-girar";
+    aviso(`Resultado registrado: ${p.nome}`, "ok");
+  }, 6200);
+});
+$("fecharResultado").addEventListener("click", () => $("modalResultado").classList.remove("aberto"));
+
+/* ---------- Área restrita ---------- */
+let dados = [];
+document.querySelectorAll("[data-fechar]").forEach(el =>
+  el.addEventListener("click", () => $(el.dataset.fechar).classList.remove("aberto")));
+$("abrirAdmin").addEventListener("click", () => {
+  $("modalAdmin").classList.add("aberto");
+  const logado = auth && auth.currentUser;
+  $("adminLoginBox").style.display = logado ? "none" : "";
+  $("adminPainel").style.display = logado ? "flex" : "none";
+  if (logado) carregarDados();
+});
+
+$("formAdmin").addEventListener("submit", async e => {
+  e.preventDefault();
+  const cpf = soDigitos($("adminCpf").value), senha = $("adminSenha").value;
+  $("adminErro").textContent = "";
+  if (!configurado){ $("adminErro").textContent = "Firebase ainda não configurado."; return; }
+  if (!CPFS_ADMIN.includes(cpf)){ $("adminErro").textContent = "CPF sem permissão de acesso."; return; }
+  try {
+    await signInWithEmailAndPassword(auth, cpf + DOMINIO_ADMIN, senha);
+    $("adminSenha").value = "";
+    $("adminLoginBox").style.display = "none";
+    $("adminPainel").style.display = "flex";
+    carregarDados();
+  } catch (err) {
+    console.error(err);
+    $("adminErro").textContent = "CPF ou senha incorretos.";
+  }
+});
+
+async function carregarDados(){
+  $("adminTotal").textContent = "Carregando...";
+  try {
+    const snap = await getDocs(query(collection(db,"giros"), orderBy("criadoEm","desc")));
+    dados = snap.docs.map(d => {
+      const x = d.data(); const dt = x.criadoEm ? x.criadoEm.toDate() : null;
+      return {
+        "Data/hora": dt ? dt.toLocaleString("pt-BR") : "",
+        "Nome": x.nome, "CPF": mascaraCpf(x.cpf || ""), "Prêmio": x.premio
+      };
+    });
+    renderTabela();
+  } catch (err) {
+    console.error(err);
+    $("adminTotal").textContent = "Sem permissão para ler os dados.";
+  }
+}
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+function filtrados(){
+  const t = $("adminBusca").value.toLowerCase().trim();
+  return t ? dados.filter(r => Object.values(r).join(" ").toLowerCase().includes(t)) : dados;
+}
+function renderTabela(){
+  const lista = filtrados();
+  $("adminTotal").textContent = `${dados.length} participante(s)`;
+  $("adminTabela").innerHTML = lista.map(r =>
+    `<tr>${Object.values(r).map(v => `<td>${esc(v)}</td>`).join("")}</tr>`).join("")
+    || `<tr><td colspan="4" style="text-align:center;padding:20px">Nenhum registro.</td></tr>`;
+}
+$("adminBusca").addEventListener("input", renderTabela);
+$("atualizar").addEventListener("click", carregarDados);
+$("sair").addEventListener("click", async () => {
+  await signOut(auth); dados = [];
+  $("adminPainel").style.display = "none"; $("adminLoginBox").style.display = "";
+});
+const nomeArquivo = ext => `roleta-participantes-${new Date().toISOString().slice(0,10)}.${ext}`;
+$("baixarXlsx").addEventListener("click", () => {
+  const ws = XLSX.utils.json_to_sheet(dados);
+  ws["!cols"] = [{wch:20},{wch:38},{wch:16},{wch:20}];
+  const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Participantes");
+  XLSX.writeFile(wb, nomeArquivo("xlsx"));
+});
+$("baixarCsv").addEventListener("click", () => {
+  if (!dados.length) return;
+  const cab = Object.keys(dados[0]);
+  const linhas = [cab.join(";"), ...dados.map(r => cab.map(k => `"${String(r[k] ?? "").replace(/"/g,'""')}"`).join(";"))];
+  const blob = new Blob(["\uFEFF" + linhas.join("\r\n")], {type:"text/csv;charset=utf-8"});
+  const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = nomeArquivo("csv"); a.click();
+});
+</script>
+</body>
+</html>
