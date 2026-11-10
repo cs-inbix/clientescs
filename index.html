@@ -205,9 +205,8 @@ const firebaseConfig = {
   appId: "1:134670666120:web:aa711ffb3e28d2f7e7d23d"
 };
 
-/* CPFs que podem baixar os dados (precisam existir também no Firebase Auth e nas regras) */
-const CPFS_ADMIN = ["06673048948","09163422980","04498276906","07499599914"];
-const DOMINIO_ADMIN = "@roleta-admin.com"; // login vira: CPF@roleta-admin.com
+/* Login do admin vira CPF@roleta-admin.com. Quem é admin é decidido SÓ nas regras do Firestore. */
+const DOMINIO_ADMIN = "@roleta-admin.com";
 
 /* =====================================================================
    2) PRÊMIOS — mesma ordem do print, no sentido horário a partir do topo.
@@ -386,7 +385,6 @@ $("formAdmin").addEventListener("submit", async e => {
   const cpf = soDigitos($("adminCpf").value), senha = $("adminSenha").value;
   $("adminErro").textContent = "";
   if (!configurado){ $("adminErro").textContent = "Firebase ainda não configurado."; return; }
-  if (!CPFS_ADMIN.includes(cpf)){ $("adminErro").textContent = "CPF sem permissão de acesso."; return; }
   try {
     await signInWithEmailAndPassword(auth, cpf + DOMINIO_ADMIN, senha);
     $("adminSenha").value = "";
@@ -407,7 +405,7 @@ async function carregarDados(){
       const x = d.data(); const dt = x.criadoEm ? x.criadoEm.toDate() : null;
       return {
         "Data/hora": dt ? dt.toLocaleString("pt-BR") : "",
-        "Nome": x.nome, "CPF": mascaraCpf(x.cpf || ""), "Prêmio": x.premio
+        "Nome": x.nome, "CPF": mascaraCpf(x.cpf || ""), "Prêmio": x.premio, _cpfTela: cpfOculto(x.cpf || "")
       };
     });
     renderTabela();
@@ -416,16 +414,18 @@ async function carregarDados(){
     $("adminTotal").textContent = "Sem permissão para ler os dados.";
   }
 }
+const cpfOculto = c => { c = soDigitos(c); return c.length === 11 ? `***.${c.slice(3,6)}.***-${c.slice(9)}` : ""; };
+const semInterno = r => { const { _cpfTela, ...resto } = r; return resto; };
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 function filtrados(){
   const t = $("adminBusca").value.toLowerCase().trim();
-  return t ? dados.filter(r => Object.values(r).join(" ").toLowerCase().includes(t)) : dados;
+  return t ? dados.filter(r => [r["Data/hora"], r["Nome"], r["Prêmio"], soDigitos(r["CPF"])].join(" ").toLowerCase().includes(t)) : dados;
 }
 function renderTabela(){
   const lista = filtrados();
   $("adminTotal").textContent = `${dados.length} participante(s)`;
   $("adminTabela").innerHTML = lista.map(r =>
-    `<tr>${Object.values(r).map(v => `<td>${esc(v)}</td>`).join("")}</tr>`).join("")
+    `<tr>${[r["Data/hora"], r["Nome"], r._cpfTela, r["Prêmio"]].map(v => `<td>${esc(v)}</td>`).join("")}</tr>`).join("")
     || `<tr><td colspan="4" style="text-align:center;padding:20px">Nenhum registro.</td></tr>`;
 }
 $("adminBusca").addEventListener("input", renderTabela);
@@ -436,15 +436,15 @@ $("sair").addEventListener("click", async () => {
 });
 const nomeArquivo = ext => `roleta-participantes-${new Date().toISOString().slice(0,10)}.${ext}`;
 $("baixarXlsx").addEventListener("click", () => {
-  const ws = XLSX.utils.json_to_sheet(dados);
+  const ws = XLSX.utils.json_to_sheet(dados.map(semInterno));
   ws["!cols"] = [{wch:20},{wch:38},{wch:16},{wch:20}];
   const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Participantes");
   XLSX.writeFile(wb, nomeArquivo("xlsx"));
 });
 $("baixarCsv").addEventListener("click", () => {
   if (!dados.length) return;
-  const cab = Object.keys(dados[0]);
-  const linhas = [cab.join(";"), ...dados.map(r => cab.map(k => `"${String(r[k] ?? "").replace(/"/g,'""')}"`).join(";"))];
+  const linhasExp = dados.map(semInterno); const cab = Object.keys(linhasExp[0]);
+  const linhas = [cab.join(";"), ...linhasExp.map(r => cab.map(k => `"${String(r[k] ?? "").replace(/"/g,'""')}"`).join(";"))];
   const blob = new Blob(["\uFEFF" + linhas.join("\r\n")], {type:"text/csv;charset=utf-8"});
   const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = nomeArquivo("csv"); a.click();
 });
